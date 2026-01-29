@@ -1,5 +1,5 @@
 #EXTM3U url-tvg="https://raw.githubusercontent.com/BuddyChewChew/tubi-scraper/refs/heads/main/tubi_epg.xml"
-# Generated on 2026-01-28T01:18:39.930363
+# Generated on 2026-01-29T01:28:37.861812
 #EXTINF:-1 tvg-id="400000096" tvg-logo="https://canvas-lb.tubitv.com/opts/ca2EvME4kxBv3g==/f96dfd36-d049-4c63-ae07-410f192f18b6/CHgQeDoFMS4xLjhAAQ==" group-title="True Crime",A&E Crime 360
 https://live-manifest.production-public.tubi.io/live/d65f6697-9fd2-477f-a56d-26cea1b939b7/playlist.m3u8
 #EXTINF:-1 tvg-id="618762" tvg-logo="https://canvas-lb.tubitv.com/opts/sE__djfzPMUmUg==/a3419933-ef7c-435f-a963-10be102b0dcd/CHgQeDoFMS4xLjhAAQ==" group-title="National News",ABC News Live
@@ -298,6 +298,8 @@ https://live-manifest.production-public.tubi.io/live/71fa1242-fb07-4d70-b30b-f4a
 https://live-manifest.production-public.tubi.io/live/399519f7-b848-4c8e-aaac-884546a1d916/playlist.m3u8
 #EXTINF:-1 tvg-id="400000011" tvg-logo="https://canvas-lb.tubitv.com/opts/uVMSPfRWQO9U4Q==/bed0ab9e-637e-4b96-a808-ee8b748c563f/CHgQeDoFMS4xLjhAAQ==" group-title="True Crime",TV One Crime & Justice
 https://live-manifest.production-public.tubi.io/live/e584c8c3-a4c4-4281-afd7-999492abcc23/playlist.m3u8
+#EXTINF:-1 tvg-id="400000247" tvg-logo="https://canvas-lb.tubitv.com/opts/wuSqRLwkKEOo1g==/38c3d087-46de-4c79-8b12-763f4483af0d/CHgQeDoFMS4xLjhAAQ==" group-title="Reality",TV One Stars & Stories
+https://live-manifest.production-public.tubi.io/live/826e59ea-a6bd-4d13-923e-eee7e8f2f938/playlist.m3u8
 #EXTINF:-1 tvg-id="400000106" tvg-logo="https://canvas-lb.tubitv.com/opts/lysgF2PEmQ0E0w==/a2adde61-ad0b-49bd-bf32-ec660546a380/CHgQeDoFMS4xLjhAAQ==" group-title="Sports On Now",UFC
 https://live-manifest.production-public.tubi.io/live/dd6d627f-f0f8-48bb-b627-7f7c4fceec37/playlist.m3u8
 #EXTINF:-1 tvg-id="715942" tvg-logo="https://canvas-lb.tubitv.com/opts/G2-HT4Bu9SL06w==/a7d3ffc6-0efb-4136-9faf-1be405d7a9dd/CHgQeDoFMS4xLjhAAQ==" group-title="Reality",Unique Lives

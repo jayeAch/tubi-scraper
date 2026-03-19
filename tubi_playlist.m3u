@@ -1,5 +1,5 @@
 #EXTM3U url-tvg="https://raw.githubusercontent.com/BuddyChewChew/tubi-scraper/refs/heads/main/tubi_epg.xml"
-# Generated on 2026-03-18T01:48:19.674787
+# Generated on 2026-03-19T01:49:22.116369
 #EXTINF:-1 tvg-id="400000096" tvg-logo="https://canvas-lb.tubitv.com/opts/PkGioxw_qoRs4Q==/f96dfd36-d049-4c63-ae07-410f192f18b6/CHgQeDoFMS4xLjlAAQ==" group-title="True Crime",A&E Crime 360
 https://live-manifest.production-public.tubi.io/live/d65f6697-9fd2-477f-a56d-26cea1b939b7/playlist.m3u8
 #EXTINF:-1 tvg-id="618762" tvg-logo="https://canvas-lb.tubitv.com/opts/UE7AlcHTNh1JbA==/a3419933-ef7c-435f-a963-10be102b0dcd/CHgQeDoFMS4xLjlAAQ==" group-title="National News",ABC News Live
@@ -68,6 +68,8 @@ https://live-manifest.production-public.tubi.io/live/22e85147-dbbf-4e68-8f53-6d6
 https://live-manifest.production-public.tubi.io/live/f35167dd-e5c5-4ab4-8741-85e9bfcb0192/playlist.m3u8
 #EXTINF:-1 tvg-id="682630" tvg-logo="https://canvas-lb.tubitv.com/opts/DeHHpLXoB2OJow==/c2033d61-8138-4bed-abdc-9e512b797080/CHgQeDoFMS4xLjlAAQ==" group-title="Reality",Court TV
 https://live-manifest.production-public.tubi.io/live/a0044921-4b6f-4e55-bf67-d51471db8b3f/playlist.m3u8
+#EXTINF:-1 tvg-id="400000285" tvg-logo="https://canvas-lb.tubitv.com/opts/u4W97Evqtq5RMQ==/3f8686fa-f328-4833-a8f1-c055986fdcdd/CHgQeDoFMS4xLjlAAQ==" group-title="Sports On Now",Cowboy+Sports
+https://live-manifest.production-public.tubi.io/live/b92c560a-132b-4f67-a993-94794a9ab904/playlist.m3u8
 #EXTINF:-1 tvg-id="400000095" tvg-logo="https://canvas-lb.tubitv.com/opts/BdCf_2WU9Nzvbw==/12e83781-4ab1-491a-826e-8b968c78ec32/CHgQeDoFMS4xLjlAAQ==" group-title="True Crime",Crime Cults Killers
 https://live-manifest.production-public.tubi.io/live/0b476028-34aa-48e8-babe-5b7172babbb7/playlist.m3u8
 #EXTINF:-1 tvg-id="715949" tvg-logo="https://canvas-lb.tubitv.com/opts/HsA80vuoV4SktQ==/4f7b9117-d773-4dbc-a9e2-4bb77bae1126/CHgQeDoFMS4xLjlAAQ==" group-title="True Crime",Crime Scenes

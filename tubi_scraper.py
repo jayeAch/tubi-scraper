@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 """
-Tubi Live Channels Scraper – maximized version (2026-10-04)
+Tubi Live Channels Scraper – maximized + robust version (2026-10-04)
 - Multiple API candidates
-- Recursive extraction
+- Strong recursive ID extraction
 - Direct + limited US proxies
 - GDPR detection
-- Auto-saves full ID list (≥250) for future fallbacks
+- Clean unique 174-ID fallback
+- Auto-saves full ID list (≥250) when available
 """
 
 import requests
@@ -51,7 +52,7 @@ HEADERS = {
 
 FALLBACK_FILE = "tubi_fallback_ids.json"
 
-# Seed fallback (174 IDs)
+# Clean unique 174-ID seed list (from 2026-10-02 successful playlist)
 SEED_FALLBACK_IDS = [
     400000008, 400000011, 400000012, 400000024, 400000028, 400000030, 400000031,
     400000033, 400000056, 400000059, 400000062, 400000063, 400000067, 400000069,
@@ -119,11 +120,13 @@ def save_fallback_ids(ids):
         print(f"Failed to save fallback IDs: {e}")
 
 def _recursive_extract_ids(obj, found=None):
+    """Strong recursive walker – looks for any plausible content_id."""
     if found is None:
         found = set()
     if isinstance(obj, dict):
         for k, v in obj.items():
-            if k in ("content_id", "id", "contentId", "channel_id") and isinstance(v, (int, str)):
+            key = str(k).lower()
+            if key in ("content_id", "contentid", "id", "channel_id", "channelid") and isinstance(v, (int, str)):
                 try:
                     cid = int(v)
                     if 100000 <= cid <= 999999999:
@@ -204,6 +207,7 @@ def fetch_channel_list_via_html(proxy=None, retries=2):
 
 def extract_ids_from_html_data(json_data):
     ids = []
+    # Classic path
     container = json_data if isinstance(json_data, dict) else {}
     epg = container.get("epg", {}).get("contentIdsByContainer", {})
     for cat_list in epg.values():
@@ -218,6 +222,7 @@ def extract_ids_from_html_data(json_data):
                     cid = entry.get("content_id") or entry.get("id")
                     if cid:
                         ids.append(int(cid))
+    # Strong recursive fallback
     ids.extend(_recursive_extract_ids(json_data))
     return list(dict.fromkeys(ids))
 
@@ -337,8 +342,10 @@ def main():
     channel_ids = []
     group_mapping = {}
 
-    # Direct first
+    # 1. Direct first
     channel_ids, group_mapping = try_with_proxy(None)
+
+    # 2. Proxies if needed
     if not channel_ids:
         proxies = get_proxies(limit=8)
         print(f"Fetched {len(proxies)} proxies")
@@ -347,18 +354,20 @@ def main():
             if channel_ids:
                 break
 
-    # Fallback
+    # 3. Fallback
     if not channel_ids:
         print("All live strategies failed – using fallback IDs")
         channel_ids = load_fallback_ids()
 
     if not channel_ids:
-        print("ERROR: no channel IDs. Aborting.")
+        print("ERROR: no channel IDs available. Aborting.")
         sys.exit(1)
 
+    # Deduplicate
+    channel_ids = list(dict.fromkeys(channel_ids))
     print(f"\nFinal channel ID count: {len(channel_ids)}")
 
-    # Auto-save high-quality list
+    # Auto-save if we got a high-quality list
     save_fallback_ids(channel_ids)
 
     epg_data = fetch_epg_data(channel_ids)

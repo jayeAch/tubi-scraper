@@ -5,8 +5,8 @@ permissions:
 
 on:
   schedule:
-    - cron: '0 0 * * *'          # Daily at midnight UTC
-  workflow_dispatch:             # Manual trigger
+    - cron: '0 0 * * *'
+  workflow_dispatch:
 
 jobs:
   scrape-tubi:
@@ -34,8 +34,8 @@ jobs:
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
-          git add tubi_playlist.m3u tubi_epg.xml
-          git commit -m "Update Tubi playlist and EPG files - $(date -u +'%Y-%m-%d %H:%M UTC')" || echo "No changes to commit"
+          git add tubi_playlist.m3u tubi_epg.xml tubi_fallback_ids.json || true
+          git commit -m "Update Tubi playlist, EPG and fallback IDs - $(date -u +'%Y-%m-%d %H:%M UTC')" || echo "No changes to commit"
           git push
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

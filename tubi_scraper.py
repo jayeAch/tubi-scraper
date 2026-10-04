@@ -1,22 +1,19 @@
 #!/usr/bin/env python3
 """
-Tubi Live Channels Scraper – fully improved version (2026-10-04)
-
-Features:
-- Multiple API container endpoints
-- Recursive extraction of content_ids from window.__data
-- Direct connection first, then limited US proxies
-- GDPR / geo-block detection
-- Large hard-fallback list of 174 known working channel IDs
-- Early exit + better logging
+Tubi Live Channels Scraper – maximized version (2026-10-04)
+- Multiple API candidates
+- Recursive extraction
+- Direct + limited US proxies
+- GDPR detection
+- Auto-saves full ID list (≥250) for future fallbacks
 """
 
 import requests
 import json
 import re
 import sys
-import xml.etree.ElementTree as ET
 import os
+import xml.etree.ElementTree as ET
 from urllib.parse import unquote, urlparse, urlunparse
 from datetime import datetime, timezone
 import urllib3
@@ -25,18 +22,15 @@ from bs4 import BeautifulSoup
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 # ---------------------------------------------------------------------------
-# Constants
-# ---------------------------------------------------------------------------
-
 LIVE_PAGE_URL = "https://tubitv.com/live"
 EPG_URL       = "https://tubitv.com/oz/epg/programming"
 
-# Candidate container endpoints (tried in order)
 CONTAINER_CANDIDATES = [
     "https://tubitv.com/oz/containers/linear",
     "https://tubitv.com/oz/containers/tubitv_us_linear",
     "https://tubitv.com/oz/containers?container_id=tubitv_us_linear",
     "https://tubitv.com/oz/containers?slug=tubitv_us_linear",
+    "https://tubitv.com/oz/containers/linear?platform=web",
 ]
 
 PROXY_API_URL = (
@@ -55,10 +49,10 @@ HEADERS = {
     "Accept": "application/json, text/html, */*",
 }
 
-# ---------------------------------------------------------------------------
-# Hard fallback – complete list of 174 working content_ids (2026-10-02)
-# ---------------------------------------------------------------------------
-FALLBACK_IDS = [
+FALLBACK_FILE = "tubi_fallback_ids.json"
+
+# Seed fallback (174 IDs)
+SEED_FALLBACK_IDS = [
     400000008, 400000011, 400000012, 400000024, 400000028, 400000030, 400000031,
     400000033, 400000056, 400000059, 400000062, 400000063, 400000067, 400000069,
     400000070, 400000073, 400000074, 400000083, 400000085, 400000086, 400000087,
@@ -78,35 +72,70 @@ FALLBACK_IDS = [
 ]
 
 # ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
-
 def _req_kwargs(proxy=None, timeout=20):
     kw = {"headers": HEADERS, "verify": False, "timeout": timeout}
     if proxy:
         kw["proxies"] = {"http": proxy, "https": proxy}
     return kw
 
-
-def get_proxies(limit=6):
-    """Fetch a small number of US SOCKS4 proxies."""
+def get_proxies(limit=8):
     try:
         r = requests.get(PROXY_API_URL, timeout=15)
         if r.status_code == 200:
-            proxies = [f"socks4://{p.strip()}" for p in r.text.splitlines() if p.strip()]
-            return proxies[:limit]
+            return [f"socks4://{p.strip()}" for p in r.text.splitlines() if p.strip()][:limit]
     except Exception as e:
         print(f"Proxy fetch error: {e}")
     return []
 
-
 def is_gdpr_block(html: str) -> bool:
     return "not available in Europe" in html or "gdpr.tubi.tv" in html.lower()
 
+def load_fallback_ids():
+    if os.path.exists(FALLBACK_FILE):
+        try:
+            with open(FALLBACK_FILE, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                ids = [int(x) for x in data.get("ids", [])]
+                if ids:
+                    print(f"Loaded {len(ids)} IDs from {FALLBACK_FILE}")
+                    return ids
+        except Exception as e:
+            print(f"Could not load {FALLBACK_FILE}: {e}")
+    return list(SEED_FALLBACK_IDS)
 
-# ---------------------------------------------------------------------------
-# Strategy 1 – direct JSON API (multiple candidates)
-# ---------------------------------------------------------------------------
+def save_fallback_ids(ids):
+    if len(ids) < 250:
+        return
+    try:
+        payload = {
+            "updated": datetime.now(timezone.utc).isoformat(),
+            "count": len(ids),
+            "ids": sorted(set(ids))
+        }
+        with open(FALLBACK_FILE, "w", encoding="utf-8") as f:
+            json.dump(payload, f, indent=2)
+        print(f"Saved {len(ids)} IDs to {FALLBACK_FILE}")
+    except Exception as e:
+        print(f"Failed to save fallback IDs: {e}")
+
+def _recursive_extract_ids(obj, found=None):
+    if found is None:
+        found = set()
+    if isinstance(obj, dict):
+        for k, v in obj.items():
+            if k in ("content_id", "id", "contentId", "channel_id") and isinstance(v, (int, str)):
+                try:
+                    cid = int(v)
+                    if 100000 <= cid <= 999999999:
+                        found.add(cid)
+                except (ValueError, TypeError):
+                    pass
+            else:
+                _recursive_extract_ids(v, found)
+    elif isinstance(obj, list):
+        for item in obj:
+            _recursive_extract_ids(item, found)
+    return found
 
 def fetch_channel_ids_via_api(proxy=None):
     for url in CONTAINER_CANDIDATES:
@@ -136,11 +165,6 @@ def fetch_channel_ids_via_api(proxy=None):
             print(f"  API error on {url}: {e}")
     return []
 
-
-# ---------------------------------------------------------------------------
-# Strategy 2 – HTML + recursive extraction
-# ---------------------------------------------------------------------------
-
 def fetch_channel_list_via_html(proxy=None, retries=2):
     for attempt in range(retries):
         try:
@@ -148,12 +172,10 @@ def fetch_channel_list_via_html(proxy=None, retries=2):
             if r.status_code != 200:
                 print(f"HTML fetch → {r.status_code} (attempt {attempt+1})")
                 continue
-
             html = r.content.decode("utf-8", errors="replace")
             if is_gdpr_block(html):
-                print("GDPR / geo-block page detected – skipping this proxy")
+                print("GDPR / geo-block detected – skipping")
                 return None
-
             soup = BeautifulSoup(html, "html.parser")
             target = None
             for script in soup.find_all("script"):
@@ -167,51 +189,24 @@ def fetch_channel_list_via_html(proxy=None, retries=2):
                     if text.strip().startswith("{") and '"epg"' in text:
                         target = text
                         break
-
             if not target:
-                print(f"No window.__data found (attempt {attempt+1})")
                 continue
-
             start = target.find("{")
             end   = target.rfind("}") + 1
-            js    = target[start:end]
-            js    = js.replace("undefined", "null")
-            js    = re.sub(r'new Date\("([^"]*)"\)', r'"\1"', js)
-            data  = json.loads(js)
+            js = target[start:end].replace("undefined", "null")
+            js = re.sub(r'new Date\("([^"]*)"\)', r'"\1"', js)
+            data = json.loads(js)
             print("HTML strategy: successfully decoded window.__data")
             return data
         except Exception as e:
             print(f"HTML strategy error (attempt {attempt+1}): {e}")
     return None
 
-
-def _recursive_extract_ids(obj, found=None):
-    """Walk any nested structure and collect plausible content_ids."""
-    if found is None:
-        found = set()
-    if isinstance(obj, dict):
-        for k, v in obj.items():
-            if k in ("content_id", "id", "contentId", "channel_id") and isinstance(v, (int, str)):
-                try:
-                    cid = int(v)
-                    if 100000 <= cid <= 999999999:
-                        found.add(cid)
-                except (ValueError, TypeError):
-                    pass
-            else:
-                _recursive_extract_ids(v, found)
-    elif isinstance(obj, list):
-        for item in obj:
-            _recursive_extract_ids(item, found)
-    return found
-
-
 def extract_ids_from_html_data(json_data):
-    """Original path + recursive fallback."""
     ids = []
     container = json_data if isinstance(json_data, dict) else {}
-    epg_containers = container.get("epg", {}).get("contentIdsByContainer", {})
-    for cat_list in epg_containers.values():
+    epg = container.get("epg", {}).get("contentIdsByContainer", {})
+    for cat_list in epg.values():
         for cat in cat_list:
             for entry in cat.get("contents", []):
                 if isinstance(entry, (int, str)):
@@ -223,17 +218,14 @@ def extract_ids_from_html_data(json_data):
                     cid = entry.get("content_id") or entry.get("id")
                     if cid:
                         ids.append(int(cid))
-
-    recursive = _recursive_extract_ids(json_data)
-    ids.extend(recursive)
+    ids.extend(_recursive_extract_ids(json_data))
     return list(dict.fromkeys(ids))
-
 
 def create_group_mapping_from_html(json_data):
     mapping = {}
     container = json_data if isinstance(json_data, dict) else {}
-    epg_containers = container.get("epg", {}).get("contentIdsByContainer", {})
-    for cat_list in epg_containers.values():
+    epg = container.get("epg", {}).get("contentIdsByContainer", {})
+    for cat_list in epg.values():
         for cat in cat_list:
             name = cat.get("name", "Other")
             for entry in cat.get("contents", []):
@@ -242,42 +234,30 @@ def create_group_mapping_from_html(json_data):
                     mapping[str(cid)] = name
     return mapping
 
-
-# ---------------------------------------------------------------------------
-# EPG fetch
-# ---------------------------------------------------------------------------
-
 def fetch_epg_data(channel_ids, proxy=None):
     if not channel_ids:
         return []
     epg_data = []
     group_size = 120
     batches = [channel_ids[i:i + group_size] for i in range(0, len(channel_ids), group_size)]
-
     for i, batch in enumerate(batches, 1):
         params = {"content_id": ",".join(map(str, batch))}
         try:
             r = requests.get(EPG_URL, params=params, **_req_kwargs(proxy, timeout=30))
-            if r.status_code != 200:
-                print(f"EPG batch {i}/{len(batches)} failed: {r.status_code}")
-                continue
-            rows = r.json().get("rows", [])
-            epg_data.extend(rows)
-            print(f"EPG batch {i}/{len(batches)}: +{len(rows)} rows")
+            if r.status_code == 200:
+                rows = r.json().get("rows", [])
+                epg_data.extend(rows)
+                print(f"EPG batch {i}/{len(batches)}: +{len(rows)} rows")
+            else:
+                print(f"EPG batch {i} failed: {r.status_code}")
         except Exception as e:
             print(f"EPG batch error: {e}")
-    print(f"EPG fetch total: {len(epg_data)} rows")
+    print(f"EPG total: {len(epg_data)} rows")
     return epg_data
-
-
-# ---------------------------------------------------------------------------
-# M3U + XMLTV generation
-# ---------------------------------------------------------------------------
 
 def clean_stream_url(url):
     p = urlparse(unquote(url))
     return urlunparse((p.scheme, p.netloc, p.path, "", "", ""))
-
 
 def convert_to_xmltv_time(iso_time):
     try:
@@ -286,86 +266,64 @@ def convert_to_xmltv_time(iso_time):
     except ValueError:
         return iso_time
 
-
 def create_m3u_playlist(epg_data, group_mapping):
     lines = [
         '#EXTM3U url-tvg="https://raw.githubusercontent.com/BuddyChewChew/tubi-scraper/refs/heads/main/tubi_epg.xml"',
         f"# Generated on {datetime.now(timezone.utc).isoformat()}",
     ]
-    seen_urls = set()
+    seen = set()
     for ch in sorted(epg_data, key=lambda x: (x.get("title") or "").lower()):
-        name   = (ch.get("title") or "Unknown Channel").encode("utf-8", errors="ignore").decode("utf-8")
+        name   = (ch.get("title") or "Unknown").encode("utf-8", "ignore").decode("utf-8")
         tvg_id = str(ch.get("content_id", ""))
         logo   = (ch.get("images", {}).get("thumbnail") or [None])[0] or ""
-        group  = group_mapping.get(tvg_id, "Other").encode("utf-8", errors="ignore").decode("utf-8")
-
+        group  = group_mapping.get(tvg_id, "Other").encode("utf-8", "ignore").decode("utf-8")
         resources = ch.get("video_resources") or []
         if not resources:
             continue
-        raw_url = (resources[0].get("manifest") or {}).get("url", "")
-        url = clean_stream_url(raw_url)
-        if not url or url in seen_urls:
+        raw = (resources[0].get("manifest") or {}).get("url", "")
+        url = clean_stream_url(raw)
+        if not url or url in seen:
             continue
-
         lines.append(f'#EXTINF:-1 tvg-id="{tvg_id}" tvg-logo="{logo}" group-title="{group}",{name}')
         lines.append(url)
-        seen_urls.add(url)
-
+        seen.add(url)
     return "\n".join(lines) + "\n"
-
 
 def create_epg_xml(epg_data):
     root = ET.Element("tv")
     for ch in epg_data:
         cid = str(ch.get("content_id", ""))
         channel_el = ET.SubElement(root, "channel", id=cid)
-        dn = ET.SubElement(channel_el, "display-name")
-        dn.text = ch.get("title", "Unknown")
+        ET.SubElement(channel_el, "display-name").text = ch.get("title", "Unknown")
         thumb = (ch.get("images", {}).get("thumbnail") or [None])[0]
         if thumb:
             ET.SubElement(channel_el, "icon", src=thumb)
-
         for prog in ch.get("programs", []):
             p = ET.SubElement(root, "programme",
                               channel=cid,
                               start=convert_to_xmltv_time(prog.get("start_time", "")),
                               stop=convert_to_xmltv_time(prog.get("end_time", "")))
-            t = ET.SubElement(p, "title")
-            t.text = prog.get("title", "")
+            ET.SubElement(p, "title").text = prog.get("title", "")
             if prog.get("description"):
-                d = ET.SubElement(p, "desc")
-                d.text = prog["description"]
+                ET.SubElement(p, "desc").text = prog["description"]
     return ET.ElementTree(root)
 
-
 def save_text(content, filename):
-    path = os.path.join(os.getcwd(), filename)
-    with open(path, "w", encoding="utf-8") as f:
+    with open(filename, "w", encoding="utf-8") as f:
         f.write(content)
-    print(f"Saved: {path}")
-
+    print(f"Saved: {filename}")
 
 def save_xml(tree, filename):
-    path = os.path.join(os.getcwd(), filename)
-    tree.write(path, encoding="utf-8", xml_declaration=True)
-    print(f"Saved: {path}")
-
-
-# ---------------------------------------------------------------------------
-# Main orchestration
-# ---------------------------------------------------------------------------
+    tree.write(filename, encoding="utf-8", xml_declaration=True)
+    print(f"Saved: {filename}")
 
 def try_with_proxy(proxy):
     label = proxy or "direct"
     print(f"\n=== Trying {label} ===")
-
-    # 1. API candidates
     ids = fetch_channel_ids_via_api(proxy)
     if ids:
         return ids, {}
-
-    # 2. HTML scrape + recursive extract
-    print("API empty → trying HTML scrape…")
+    print("API empty → trying HTML…")
     html_data = fetch_channel_list_via_html(proxy)
     if html_data:
         ids = extract_ids_from_html_data(html_data)
@@ -373,51 +331,48 @@ def try_with_proxy(proxy):
         print(f"HTML extraction: {len(ids)} IDs")
         if ids:
             return ids, mapping
-
     return [], {}
-
 
 def main():
     channel_ids = []
     group_mapping = {}
 
-    # 1. Direct connection first
+    # Direct first
     channel_ids, group_mapping = try_with_proxy(None)
-    if channel_ids:
-        print(f"Got {len(channel_ids)} IDs via direct connection")
-    else:
-        # 2. Limited number of US proxies
-        proxies = get_proxies(limit=6)
+    if not channel_ids:
+        proxies = get_proxies(limit=8)
         print(f"Fetched {len(proxies)} proxies")
         for proxy in proxies:
             channel_ids, group_mapping = try_with_proxy(proxy)
             if channel_ids:
-                print(f"Got {len(channel_ids)} IDs via {proxy}")
                 break
 
-    # 3. Hard fallback
+    # Fallback
     if not channel_ids:
-        print("All live strategies failed – using FALLBACK_IDS")
-        channel_ids = list(dict.fromkeys(FALLBACK_IDS))  # unique
+        print("All live strategies failed – using fallback IDs")
+        channel_ids = load_fallback_ids()
 
     if not channel_ids:
-        print("ERROR: no channel IDs available. Aborting.")
+        print("ERROR: no channel IDs. Aborting.")
         sys.exit(1)
 
     print(f"\nFinal channel ID count: {len(channel_ids)}")
+
+    # Auto-save high-quality list
+    save_fallback_ids(channel_ids)
+
     epg_data = fetch_epg_data(channel_ids)
     if not epg_data:
-        print("ERROR: EPG endpoint returned no data. Aborting.")
+        print("ERROR: EPG returned no data. Aborting.")
         sys.exit(1)
 
-    m3u     = create_m3u_playlist(epg_data, group_mapping)
+    m3u = create_m3u_playlist(epg_data, group_mapping)
     epg_xml = create_epg_xml(epg_data)
 
     save_text(m3u, "tubi_playlist.m3u")
     save_xml(epg_xml, "tubi_epg.xml")
 
     print(f"\nDone. {len(epg_data)} channels written.")
-
 
 if __name__ == "__main__":
     main()

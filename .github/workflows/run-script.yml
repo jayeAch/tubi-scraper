@@ -5,8 +5,8 @@ permissions:
 
 on:
   schedule:
-    - cron: '0 0 * * *'
-  workflow_dispatch:
+    - cron: '0 0 * * *'          # Daily at midnight UTC
+  workflow_dispatch:             # Manual trigger
 
 jobs:
   scrape-tubi:
@@ -34,7 +34,13 @@ jobs:
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
-          git add tubi_playlist.m3u tubi_epg.xml tubi_fallback_ids.json || true
+
+          # Only add files that exist
+          git add tubi_playlist.m3u tubi_epg.xml 2>/dev/null || true
+          if [ -f tubi_fallback_ids.json ]; then
+            git add tubi_fallback_ids.json
+          fi
+
           git commit -m "Update Tubi playlist, EPG and fallback IDs - $(date -u +'%Y-%m-%d %H:%M UTC')" || echo "No changes to commit"
           git push
         env:

@@ -1,11 +1,12 @@
 name: Run Tubi Scraper
+
 permissions:
   contents: write
 
 on:
   schedule:
-    - cron: '0 0 * * *'  # Runs daily at midnight UTC
-  workflow_dispatch:      # Allows manual triggering
+    - cron: '0 0 * * *'          # Daily at midnight UTC
+  workflow_dispatch:             # Manual trigger
 
 jobs:
   scrape-tubi:
@@ -25,28 +26,15 @@ jobs:
           python -m pip install --upgrade pip
           pip install requests beautifulsoup4 urllib3 pysocks
 
-      - name: Remove old files
-        run: |
-          rm -f tubi_playlist.m3u tubi_epg.xml
-          echo "Removed old files (if they existed)"
-
       - name: Run tubi_scraper.py
         run: python tubi_scraper.py
-        shell: /usr/bin/bash -e {0}
-        env:
-          pythonLocation: /opt/hostedtoolcache/Python/3.13.2/x64
-          LD_LIBRARY_PATH: /opt/hostedtoolcache/Python/3.13.2/x64/lib
 
-      - name: Debug files and commit
+      - name: Commit and push updated files
+        if: success()
         run: |
-          echo "Current directory: $(/bin/pwd)"
-          ls -l
-          git status
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
           git add tubi_playlist.m3u tubi_epg.xml
-          echo "Files staged:"
-          git status
           git commit -m "Update Tubi playlist and EPG files - $(date -u +'%Y-%m-%d %H:%M UTC')" || echo "No changes to commit"
           git push
         env:

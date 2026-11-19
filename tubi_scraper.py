@@ -205,38 +205,72 @@ def fetch_channel_list_via_html(proxy=None, retries=2):
             print(f"HTML strategy error (attempt {attempt+1}): {e}")
     return None
 
+def _epg_node(json_data):
+    """Returns epg.contentIdsByContainer whatever its shape (dict or list)."""
+    if not isinstance(json_data, dict):
+        return None
+    epg = json_data.get("epg")
+    if not isinstance(epg, dict):
+        return None
+    return epg.get("contentIdsByContainer")
+
+def _iter_categories(node):
+    """Yields every category dict that has a 'contents' list, from a dict-of-lists,
+    a list of category dicts, a list of lists, or any nesting of those."""
+    if isinstance(node, dict):
+        if isinstance(node.get("contents"), list):
+            yield node
+        else:
+            for v in node.values():
+                yield from _iter_categories(v)
+    elif isinstance(node, list):
+        for item in node:
+            yield from _iter_categories(item)
+
+def _to_id(entry):
+    if isinstance(entry, dict):
+        entry = entry.get("content_id") or entry.get("id")
+    try:
+        cid = int(entry)
+    except (ValueError, TypeError):
+        return None
+    return cid if 100000 <= cid <= 999999999 else None
+
+def _scalar_ids(node, found):
+    """Bare id lists (e.g. {"containerX": [400000304, ...]}) under the epg node."""
+    if isinstance(node, dict):
+        for v in node.values():
+            _scalar_ids(v, found)
+    elif isinstance(node, list):
+        for item in node:
+            if isinstance(item, (dict, list)):
+                _scalar_ids(item, found)
+            else:
+                cid = _to_id(item)
+                if cid:
+                    found.append(cid)
+
 def extract_ids_from_html_data(json_data):
     ids = []
-    # Classic path
-    container = json_data if isinstance(json_data, dict) else {}
-    epg = container.get("epg", {}).get("contentIdsByContainer", {})
-    for cat_list in epg.values():
-        for cat in cat_list:
-            for entry in cat.get("contents", []):
-                if isinstance(entry, (int, str)):
-                    try:
-                        ids.append(int(entry))
-                    except Exception:
-                        pass
-                elif isinstance(entry, dict):
-                    cid = entry.get("content_id") or entry.get("id")
-                    if cid:
-                        ids.append(int(cid))
+    node = _epg_node(json_data)
+    for cat in _iter_categories(node):
+        for entry in cat.get("contents", []):
+            cid = _to_id(entry)
+            if cid:
+                ids.append(cid)
+    _scalar_ids(node, ids)
     # Strong recursive fallback
     ids.extend(_recursive_extract_ids(json_data))
     return list(dict.fromkeys(ids))
 
 def create_group_mapping_from_html(json_data):
     mapping = {}
-    container = json_data if isinstance(json_data, dict) else {}
-    epg = container.get("epg", {}).get("contentIdsByContainer", {})
-    for cat_list in epg.values():
-        for cat in cat_list:
-            name = cat.get("name", "Other")
-            for entry in cat.get("contents", []):
-                cid = entry if isinstance(entry, (int, str)) else (entry.get("content_id") or entry.get("id"))
-                if cid:
-                    mapping[str(cid)] = name
+    for cat in _iter_categories(_epg_node(json_data)):
+        name = cat.get("name", "Other")
+        for entry in cat.get("contents", []):
+            cid = _to_id(entry)
+            if cid:
+                mapping[str(cid)] = name
     return mapping
 
 def fetch_epg_data(channel_ids, proxy=None):
@@ -331,8 +365,12 @@ def try_with_proxy(proxy):
     print("API empty → trying HTML…")
     html_data = fetch_channel_list_via_html(proxy)
     if html_data:
-        ids = extract_ids_from_html_data(html_data)
-        mapping = create_group_mapping_from_html(html_data)
+        try:
+            ids = extract_ids_from_html_data(html_data)
+            mapping = create_group_mapping_from_html(html_data)
+        except Exception as e:
+            print(f"HTML extraction failed ({type(e).__name__}: {e}) - Tubi page format may have changed")
+            return [], {}
         print(f"HTML extraction: {len(ids)} IDs")
         if ids:
             return ids, mapping
@@ -343,14 +381,22 @@ def main():
     group_mapping = {}
 
     # 1. Direct first
-    channel_ids, group_mapping = try_with_proxy(None)
+    try:
+        channel_ids, group_mapping = try_with_proxy(None)
+    except Exception as e:
+        print(f"Direct attempt crashed: {type(e).__name__}: {e}")
+        channel_ids, group_mapping = [], {}
 
     # 2. Proxies if needed
     if not channel_ids:
         proxies = get_proxies(limit=8)
         print(f"Fetched {len(proxies)} proxies")
         for proxy in proxies:
-            channel_ids, group_mapping = try_with_proxy(proxy)
+            try:
+                channel_ids, group_mapping = try_with_proxy(proxy)
+            except Exception as e:
+                print(f"Proxy attempt crashed: {type(e).__name__}: {e}")
+                continue
             if channel_ids:
                 break
 
